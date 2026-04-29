@@ -158,14 +158,14 @@ module Azurite
         aggressive_cleanup
       elsif current_size_mb > @max_size_mb
         Log.for("azurite").warn { "Content DB size (#{current_size_mb.round(2)}MB) exceeds soft limit (#{@max_size_mb}MB)" }
-        cleanup_old_entries(@retention_days / 2)
+        cleanup_old_entries((@retention_days / 2).to_i32)
       elsif current_size_mb > @warning_size_mb
         Log.for("azurite").info { "Content DB size: #{current_size_mb.round(2)}MB (warning threshold: #{@warning_size_mb}MB)" }
       end
     end
 
     private def aggressive_cleanup
-      cleanup_old_entries(@retention_days / 3)
+      cleanup_old_entries((@retention_days / 3).to_i32)
       vacuum
     end
 

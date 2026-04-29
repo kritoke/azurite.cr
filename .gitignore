@@ -40,3 +40,7 @@ flake.private.nix
 
 # Todo infrastructure
 .tickets/
+openspec/
+
+# Roadmap planning documents (not for commit)
+/roadmap/
