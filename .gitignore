@@ -1,0 +1,42 @@
+# Nix
+.direnv/
+.flake/
+result
+result-*
+
+# Dependencies
+.shards/
+lib/
+
+# Build artifacts
+bin/
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
+*.dwarf
+.crystal/
+build/dev/
+_build/dev/
+
+# Logs
+*.log
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Local developer overrides
+flake.private.nix
+.devshell-private.sh
+
+# Todo infrastructure
+.tickets/
