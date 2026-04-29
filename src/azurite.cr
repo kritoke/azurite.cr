@@ -1,4 +1,5 @@
 require "./builder"
+require "./store_interface"
 require "./store"
 require "./constants"
 require "./models/article_content"

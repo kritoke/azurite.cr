@@ -17,6 +17,7 @@ bin/
 *.exe
 *.dwarf
 .crystal/
+.cache/
 build/dev/
 _build/dev/
 

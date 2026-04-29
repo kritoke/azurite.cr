@@ -82,12 +82,12 @@ if article
 end
 ```
 
-#### `get_content_by_feed(feed_url) : Array(ArticleContent)`
+#### `articles_for_feed(feed_url) : Array(ArticleContent)`
 
 Get all stored articles for a feed URL, newest first.
 
 ```crystal
-articles = store.get_content_by_feed("https://example.com/feed.xml")
+articles = store.articles_for_feed("https://example.com/feed.xml")
 articles.each do |article|
   puts article.title
 end
@@ -102,7 +102,7 @@ deleted = store.cleanup_old_entries
 # => 12
 ```
 
-#### `check_size_and_cleanup`
+#### `enforce_size_limits`
 
 Automatically manage database size:
 - **Above hard limit (100MB)**: Aggressive cleanup + VACUUM
@@ -110,7 +110,7 @@ Automatically manage database size:
 - **Above warning (30MB)**: Log size only
 
 ```crystal
-store.check_size_and_cleanup
+store.enforce_size_limits
 ```
 
 #### `db_size_mb : Float64`
@@ -157,7 +157,7 @@ CREATE TABLE article_content (
   content TEXT NOT NULL,
   content_type TEXT DEFAULT 'html',
   fetched_at TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 )
 
 CREATE INDEX idx_content_link ON article_content(item_link)
