@@ -10,6 +10,7 @@ lib/
 
 # Build artifacts
 bin/
+azurite
 *.o
 *.so
 *.dylib
