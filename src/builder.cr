@@ -11,26 +11,26 @@ module Azurite
     @auto_cleanup_interval : Time::Span?
 
     private VALIDATORS = {
-      retention_days:     {"retention_days must be at least 1", 1},
-      max_size_mb:        {"max_size_mb must be positive", 1},
-      warning_size_mb:     {"warning_size_mb must be at least 1", 1},
-      hard_limit_mb:       {"hard_limit_mb must be at least 1", 1},
-      max_content_bytes:   {"max_content_bytes must be at least 1", 1},
+      retention_days:    "retention_days must be at least 1",
+      max_size_mb:       "max_size_mb must be positive",
+      warning_size_mb:   "warning_size_mb must be at least 1",
+      hard_limit_mb:     "hard_limit_mb must be at least 1",
+      max_content_bytes: "max_content_bytes must be at least 1",
     }
 
-    private macro validate_and_set(name, min)
+    private macro validate_and_set(name)
       def {{name.id}}(value : Int32) : self
-        raise ArgumentError.new(VALIDATORS[:{{name.id}}][0]) if value < {{min}}
+        raise ArgumentError.new(VALIDATORS[:{{name.id}}]) if value < 1
         @{{name.id}} = value
         self
       end
     end
 
-    validate_and_set(retention_days, 1)
-    validate_and_set(max_size_mb, 1)
-    validate_and_set(warning_size_mb, 1)
-    validate_and_set(hard_limit_mb, 1)
-    validate_and_set(max_content_bytes, 1)
+    validate_and_set(retention_days)
+    validate_and_set(max_size_mb)
+    validate_and_set(warning_size_mb)
+    validate_and_set(hard_limit_mb)
+    validate_and_set(max_content_bytes)
 
     def db_path(path : String) : self
       @db_path = path

@@ -8,4 +8,9 @@ module Azurite
   CONTENT_TYPE_DEFAULT      = "html"
   TIME_FORMAT               = "%Y-%m-%dT%H:%M:%SZ"
   ARTICLE_CONTENT_COLUMNS   = "id, item_link, feed_url, title, content, content_type, fetched_at, created_at"
+  AUTO_CLEANUP_INTERVAL_DEFAULT = 1.hour
+
+  # For retention cleanup fractions
+  SOFT_CLEANUP_DAYS_FRACTION = 2
+  AGGRESSIVE_CLEANUP_DAYS_FRACTION = 3
 end

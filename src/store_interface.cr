@@ -10,7 +10,7 @@ module Azurite
     abstract def cleanup_old_entries(retention_days : Int32? = nil) : Int32
     abstract def db_size_mb : Float64
     abstract def enforce_size_limits : Nil
-    abstract def start_auto_cleanup(interval : Time::Span = 1.hour) : Nil
+    abstract def start_auto_cleanup(interval : Time::Span) : Nil
     abstract def stop_auto_cleanup : Nil
     abstract def close : Nil
   end

@@ -34,7 +34,7 @@ module Azurite
       validate_db_path
       @mutex = Mutex.new
       @auto_cleanup_enabled = false
-      @auto_cleanup_interval = 1.hour
+      @auto_cleanup_interval = AUTO_CLEANUP_INTERVAL_DEFAULT
       @cleanup_channel = ::Channel(Nil).new
       @db = DB.open("sqlite3:#{@db_path}")
       init_schema
@@ -48,7 +48,7 @@ module Azurite
       nil
     end
 
-    def start_auto_cleanup(interval : Time::Span = 1.hour) : Nil
+    def start_auto_cleanup(interval : Time::Span = AUTO_CLEANUP_INTERVAL_DEFAULT) : Nil
       @auto_cleanup_enabled = true
       @auto_cleanup_interval = interval
       spawn_auto_cleanup
@@ -180,14 +180,14 @@ module Azurite
         aggressive_cleanup
       elsif current_size_mb > @max_size_mb
         Log.for("azurite").warn { "Content DB size (#{current_size_mb.round(2)}MB) exceeds soft limit (#{@max_size_mb}MB)" }
-        cleanup_old_entries({(@retention_days / 2).to_i32, 1}.max)
+        cleanup_old_entries({(@retention_days / SOFT_CLEANUP_DAYS_FRACTION).to_i32, 1}.max)
       elsif current_size_mb > @warning_size_mb
         Log.for("azurite").info { "Content DB size: #{current_size_mb.round(2)}MB (warning threshold: #{@warning_size_mb}MB)" }
       end
     end
 
     private def aggressive_cleanup
-      cleanup_old_entries({(@retention_days / 3).to_i32, 1}.max)
+      cleanup_old_entries({(@retention_days / AGGRESSIVE_CLEANUP_DAYS_FRACTION).to_i32, 1}.max)
       vacuum
     end
 
