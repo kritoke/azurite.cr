@@ -6,4 +6,6 @@ module Azurite
   MAX_CONTENT_BYTES_DEFAULT = 1_048_576
   DB_PATH_DEFAULT           = "./content.db"
   CONTENT_TYPE_DEFAULT      = "html"
+  TIME_FORMAT               = "%Y-%m-%dT%H:%M:%SZ"
+  ARTICLE_CONTENT_COLUMNS   = "id, item_link, feed_url, title, content, content_type, fetched_at, created_at"
 end

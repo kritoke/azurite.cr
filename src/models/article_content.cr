@@ -33,8 +33,8 @@ module Azurite
       title = rs.read(String)
       content = rs.read(String)
       content_type = rs.read(String)
-      fetched_at = Time.parse(rs.read(String), "%Y-%m-%dT%H:%M:%SZ", Time::Location::UTC)
-      created_at = Time.parse(rs.read(String), "%Y-%m-%dT%H:%M:%SZ", Time::Location::UTC)
+      fetched_at = Time.parse(rs.read(String), TIME_FORMAT, Time::Location::UTC)
+      created_at = Time.parse(rs.read(String), TIME_FORMAT, Time::Location::UTC)
       ArticleContent.new(item_link, feed_url, title, content, content_type).tap do |a|
         a.id = id
         a.fetched_at = fetched_at

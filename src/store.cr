@@ -41,6 +41,13 @@ module Azurite
       Log.for("azurite").info { "AzuriteStore initialized: #{@db_path}" }
     end
 
+    private def synchronized(&)
+      @mutex.synchronize { yield }
+    rescue ex
+      Log.for("azurite").error(exception: ex) { "Database operation failed" }
+      nil
+    end
+
     def start_auto_cleanup(interval : Time::Span = 1.hour) : Nil
       @auto_cleanup_enabled = true
       @auto_cleanup_interval = interval
@@ -99,53 +106,45 @@ module Azurite
     end
 
     def store(item_link : String, feed_url : String, title : String, content : String, content_type : String = CONTENT_TYPE_DEFAULT) : Bool
-      @mutex.synchronize do
+      result = synchronized do
         truncated_content = truncate_content(content)
-        fetched_at = Time.utc.to_s("%Y-%m-%dT%H:%M:%SZ")
-
+        fetched_at = Time.utc.to_s(TIME_FORMAT)
         @db.exec(
           "INSERT INTO article_content (item_link, feed_url, title, content, content_type, fetched_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(item_link) DO UPDATE SET feed_url = excluded.feed_url, title = excluded.title, content = excluded.content, content_type = excluded.content_type, fetched_at = excluded.fetched_at",
           item_link, feed_url, title, truncated_content, content_type, fetched_at
         )
         true
-      rescue ex
-        Log.for("azurite").error(exception: ex) { "Failed to store content for #{item_link}" }
-        false
       end
+      result || false
     end
 
     def get_content(item_link : String) : String?
-      @mutex.synchronize do
-        @db.query_one?(
-          "SELECT content FROM article_content WHERE item_link = ? LIMIT 1",
-          item_link,
-          as: String
-        )
-      end
+      @db.query_one?(
+        "SELECT content FROM article_content WHERE item_link = ? LIMIT 1",
+        item_link,
+        as: String
+      )
     rescue ex
       Log.for("azurite").error(exception: ex) { "Failed to get content for #{item_link}" }
       nil
     end
 
     def get_article(item_link : String) : ArticleContent?
-      @mutex.synchronize do
+      synchronized do
         @db.query_one?(
-          "SELECT id, item_link, feed_url, title, content, content_type, fetched_at, created_at FROM article_content WHERE item_link = ? LIMIT 1",
+          "SELECT #{ARTICLE_CONTENT_COLUMNS} FROM article_content WHERE item_link = ? LIMIT 1",
           item_link
         ) do |row|
           ArticleContent.from_row(row)
         end
       end
-    rescue ex
-      Log.for("azurite").error(exception: ex) { "Failed to get article for #{item_link}" }
-      nil
     end
 
     def articles_for_feed(feed_url : String) : Array(ArticleContent)
-      @mutex.synchronize do
+      synchronized do
         articles = [] of ArticleContent
         @db.query(
-          "SELECT id, item_link, feed_url, title, content, content_type, fetched_at, created_at FROM article_content WHERE feed_url = ? ORDER BY created_at DESC",
+          "SELECT #{ARTICLE_CONTENT_COLUMNS} FROM article_content WHERE feed_url = ? ORDER BY created_at DESC",
           feed_url
         ) do |row|
           row.each do
@@ -153,26 +152,19 @@ module Azurite
           end
         end
         articles
-      end
-    rescue ex
-      Log.for("azurite").error(exception: ex) { "Failed to get articles for feed #{feed_url}" }
-      [] of ArticleContent
+      end || [] of ArticleContent
     end
 
     def cleanup_old_entries(retention_days : Int32? = nil) : Int32
       days = retention_days || @retention_days
-      @mutex.synchronize do
-        cutoff = (Time.utc - days.days).to_s("%Y-%m-%dT%H:%M:%SZ")
-        result = @db.exec("DELETE FROM article_content WHERE created_at < ?", cutoff)
-        deleted = result.rows_affected.to_i32
-        if deleted > 0
-          Log.for("azurite").info { "Cleaned up #{deleted} old articles (older than #{days} days)" }
-        end
+      result = synchronized do
+        cutoff = (Time.utc - days.days).to_s(TIME_FORMAT)
+        exec_result = @db.exec("DELETE FROM article_content WHERE created_at < ?", cutoff)
+        deleted = exec_result.rows_affected.to_i32
+        Log.for("azurite").info { "Cleaned up #{deleted} old articles (older than #{days} days)" } if deleted > 0
         deleted
       end
-    rescue ex
-      Log.for("azurite").error(exception: ex) { "Failed to cleanup old entries" }
-      0
+      result || 0
     end
 
     def db_size_mb : Float64

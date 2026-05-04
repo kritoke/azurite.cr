@@ -1,3 +1,5 @@
+require "./constants"
+
 module Azurite
   class Builder
     @db_path : String = DB_PATH_DEFAULT
@@ -8,38 +10,30 @@ module Azurite
     @max_content_bytes : Int32 = MAX_CONTENT_BYTES_DEFAULT
     @auto_cleanup_interval : Time::Span?
 
+    private VALIDATORS = {
+      retention_days:     {"retention_days must be at least 1", 1},
+      max_size_mb:        {"max_size_mb must be positive", 1},
+      warning_size_mb:     {"warning_size_mb must be at least 1", 1},
+      hard_limit_mb:       {"hard_limit_mb must be at least 1", 1},
+      max_content_bytes:   {"max_content_bytes must be at least 1", 1},
+    }
+
+    private macro validate_and_set(name, min)
+      def {{name.id}}(value : Int32) : self
+        raise ArgumentError.new(VALIDATORS[:{{name.id}}][0]) if value < {{min}}
+        @{{name.id}} = value
+        self
+      end
+    end
+
+    validate_and_set(retention_days, 1)
+    validate_and_set(max_size_mb, 1)
+    validate_and_set(warning_size_mb, 1)
+    validate_and_set(hard_limit_mb, 1)
+    validate_and_set(max_content_bytes, 1)
+
     def db_path(path : String) : self
       @db_path = path
-      self
-    end
-
-    def retention_days(days : Int32) : self
-      raise ArgumentError.new("retention_days must be at least 1") if days < 1
-      @retention_days = days
-      self
-    end
-
-    def max_size_mb(size : Int32) : self
-      raise ArgumentError.new("max_size_mb must be positive") if size < 1
-      @max_size_mb = size
-      self
-    end
-
-    def warning_size_mb(size : Int32) : self
-      raise ArgumentError.new("warning_size_mb must be at least 1") if size < 1
-      @warning_size_mb = size
-      self
-    end
-
-    def hard_limit_mb(size : Int32) : self
-      raise ArgumentError.new("hard_limit_mb must be at least 1") if size < 1
-      @hard_limit_mb = size
-      self
-    end
-
-    def max_content_bytes(bytes : Int32) : self
-      raise ArgumentError.new("max_content_bytes must be at least 1") if bytes < 1
-      @max_content_bytes = bytes
       self
     end
 
