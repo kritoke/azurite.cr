@@ -5,30 +5,33 @@ module Azurite
     @config = Config.new
     @auto_cleanup_interval : Time::Span?
 
-    private VALIDATORS = {
-      retention_days:    "retention_days must be at least 1",
-      max_size_mb:       "max_size_mb must be positive",
-      warning_size_mb:   "warning_size_mb must be at least 1",
-      hard_limit_mb:     "hard_limit_mb must be at least 1",
-      max_content_bytes: "max_content_bytes must be at least 1",
-    }
-
-    private macro validate_and_set(field, key)
-      def {{field.id}}(value : Int32) : self
-        raise ArgumentError.new(VALIDATORS[{{key}}]) if value < MIN_VALID_VALUE
-        @config.{{field.id}} = value
-        self
-      end
-    end
-
-    validate_and_set(retention_days, :retention_days)
-    validate_and_set(max_size_mb, :max_size_mb)
-    validate_and_set(warning_size_mb, :warning_size_mb)
-    validate_and_set(hard_limit_mb, :hard_limit_mb)
-    validate_and_set(max_content_bytes, :max_content_bytes)
-
     def db_path(path : String) : self
       @config.db_path = path
+      self
+    end
+
+    def retention_days(days : Int32) : self
+      @config.retention_days = days
+      self
+    end
+
+    def max_size_mb(size : Int32) : self
+      @config.max_size_mb = size
+      self
+    end
+
+    def warning_size_mb(size : Int32) : self
+      @config.warning_size_mb = size
+      self
+    end
+
+    def hard_limit_mb(size : Int32) : self
+      @config.hard_limit_mb = size
+      self
+    end
+
+    def max_content_bytes(bytes : Int32) : self
+      @config.max_content_bytes = bytes
       self
     end
 

@@ -30,10 +30,11 @@ module Azurite
       AZURITE_LOG.info { "AzuriteStore initialized: #{@config.db_path}" }
     end
 
-    private def synchronized(&)
+    private def synchronized(context : String? = nil, &)
       @mutex.synchronize { yield }
     rescue ex
-      AZURITE_LOG.error(exception: ex) { "Database operation failed" }
+      msg = context ? "Failed to #{context}" : "Database operation failed"
+      AZURITE_LOG.error(exception: ex) { msg }
       nil
     end
 
@@ -75,7 +76,7 @@ module Azurite
 
     private def init_schema
       @db.exec <<-SQL # ameba:disable Style/HeredocIndent
-        CREATE TABLE IF NOT EXISTS article_content (
+        CREATE TABLE IF NOT EXISTS #{TABLE_NAME} (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           item_link TEXT UNIQUE NOT NULL,
           feed_url TEXT NOT NULL,
@@ -87,17 +88,17 @@ module Azurite
         )
       SQL
 
-      @db.exec("CREATE INDEX IF NOT EXISTS idx_content_link ON article_content(item_link)")
-      @db.exec("CREATE INDEX IF NOT EXISTS idx_content_feed ON article_content(feed_url)")
-      @db.exec("CREATE INDEX IF NOT EXISTS idx_content_created ON article_content(created_at)")
+      @db.exec("CREATE INDEX IF NOT EXISTS idx_content_link ON #{TABLE_NAME}(item_link)")
+      @db.exec("CREATE INDEX IF NOT EXISTS idx_content_feed ON #{TABLE_NAME}(feed_url)")
+      @db.exec("CREATE INDEX IF NOT EXISTS idx_content_created ON #{TABLE_NAME}(created_at)")
     end
 
     def store(item_link : String, feed_url : String, title : String, content : String, content_type : String = CONTENT_TYPE_DEFAULT) : Bool
-      result = synchronized do
+      result = synchronized("store content for #{item_link}") do
         truncated_content = truncate_content(content)
         fetched_at = Time.utc.to_s(TIME_FORMAT)
         @db.exec(
-          "INSERT INTO article_content (item_link, feed_url, title, content, content_type, fetched_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(item_link) DO UPDATE SET feed_url = excluded.feed_url, title = excluded.title, content = excluded.content, content_type = excluded.content_type, fetched_at = excluded.fetched_at",
+          "INSERT INTO #{TABLE_NAME} (item_link, feed_url, title, content, content_type, fetched_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(item_link) DO UPDATE SET feed_url = excluded.feed_url, title = excluded.title, content = excluded.content, content_type = excluded.content_type, fetched_at = excluded.fetched_at",
           item_link, feed_url, title, truncated_content, content_type, fetched_at
         )
         true
@@ -106,9 +107,9 @@ module Azurite
     end
 
     def get_content(item_link : String) : String?
-      synchronized do
+      synchronized("get content for #{item_link}") do
         @db.query_one?(
-          "SELECT content FROM article_content WHERE item_link = ? LIMIT 1",
+          "SELECT content FROM #{TABLE_NAME} WHERE item_link = ? LIMIT 1",
           item_link,
           as: String
         )
@@ -116,9 +117,9 @@ module Azurite
     end
 
     def get_article(item_link : String) : ArticleContent?
-      synchronized do
+      synchronized("get article for #{item_link}") do
         @db.query_one?(
-          "SELECT #{ARTICLE_CONTENT_COLUMNS} FROM article_content WHERE item_link = ? LIMIT 1"
+          "SELECT #{ARTICLE_CONTENT_COLUMNS} FROM #{TABLE_NAME} WHERE item_link = ? LIMIT 1"
         ) do |rs|
           ArticleContent.from_row(rs)
         end
@@ -126,10 +127,10 @@ module Azurite
     end
 
     def articles_for_feed(feed_url : String) : Array(ArticleContent)
-      synchronized do
+      synchronized("get articles for feed #{feed_url}") do
         articles = [] of ArticleContent
         @db.query(
-          "SELECT #{ARTICLE_CONTENT_COLUMNS} FROM article_content WHERE feed_url = ? ORDER BY created_at DESC",
+          "SELECT #{ARTICLE_CONTENT_COLUMNS} FROM #{TABLE_NAME} WHERE feed_url = ? ORDER BY created_at DESC",
           feed_url
         ) do |rs|
           while rs.move_next
@@ -142,9 +143,9 @@ module Azurite
 
     def cleanup_old_entries(retention_days : Int32? = nil) : Int32
       days = retention_days || @config.retention_days
-      result = synchronized do
+      result = synchronized("cleanup old entries") do
         cutoff = (Time.utc - days.days).to_s(TIME_FORMAT)
-        exec_result = @db.exec("DELETE FROM article_content WHERE created_at < ?", cutoff)
+        exec_result = @db.exec("DELETE FROM #{TABLE_NAME} WHERE created_at < ?", cutoff)
         exec_result.rows_affected.to_i32
       end
       if result && result > 0
@@ -166,14 +167,14 @@ module Azurite
         aggressive_cleanup
       elsif current_size_mb > @config.max_size_mb
         AZURITE_LOG.warn { "Content DB size (#{current_size_mb.round(2)}MB) exceeds soft limit (#{@config.max_size_mb}MB)" }
-        cleanup_old_entries({@config.retention_days / SOFT_CLEANUP_DAYS_FRACTION, 1}.max)
+        cleanup_old_entries(@config.retention_days_fraction(SOFT_CLEANUP_DAYS_FRACTION))
       elsif current_size_mb > @config.warning_size_mb
         AZURITE_LOG.info { "Content DB size: #{current_size_mb.round(2)}MB (warning threshold: #{@config.warning_size_mb}MB)" }
       end
     end
 
     private def aggressive_cleanup
-      cleanup_old_entries({@config.retention_days / AGGRESSIVE_CLEANUP_DAYS_FRACTION, 1}.max)
+      cleanup_old_entries(@config.retention_days_fraction(AGGRESSIVE_CLEANUP_DAYS_FRACTION))
       vacuum
     end
 
