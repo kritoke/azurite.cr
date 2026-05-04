@@ -11,34 +11,23 @@ require "./models/article_content"
 module Azurite
   class Store
     include StoreInterface
+
     @db : DB::Database
-    @db_path : String
-    @retention_days : Int32
-    @max_size_mb : Int32
-    @warning_size_mb : Int32
-    @hard_limit_mb : Int32
-    @max_content_bytes : Int32
+    @config : Config
     @mutex : Mutex
     @auto_cleanup_enabled : Bool
     @auto_cleanup_interval : Time::Span
     @cleanup_channel : ::Channel(Nil)
 
-    def initialize(
-      @db_path : String,
-      @retention_days : Int32,
-      @max_size_mb : Int32,
-      @warning_size_mb : Int32,
-      @hard_limit_mb : Int32,
-      @max_content_bytes : Int32,
-    )
+    def initialize(@config : Config)
       validate_db_path
       @mutex = Mutex.new
       @auto_cleanup_enabled = false
       @auto_cleanup_interval = AUTO_CLEANUP_INTERVAL_DEFAULT
       @cleanup_channel = ::Channel(Nil).new
-      @db = DB.open("sqlite3:#{@db_path}")
+      @db = DB.open("sqlite3:#{@config.db_path}")
       init_schema
-      AZURITE_LOG.info { "AzuriteStore initialized: #{@db_path}" }
+      AZURITE_LOG.info { "AzuriteStore initialized: #{@config.db_path}" }
     end
 
     private def synchronized(&)
@@ -68,21 +57,19 @@ module Azurite
           when @cleanup_channel.receive
             break
           when timeout @auto_cleanup_interval
-            if @auto_cleanup_enabled
-              enforce_size_limits
-            end
+            enforce_size_limits if @auto_cleanup_enabled
           end
         end
       end
     end
 
     private def validate_db_path
-      dir = File.dirname(@db_path)
+      dir = File.dirname(@config.db_path)
       if dir != "." && !Dir.exists?(dir)
         raise ArgumentError.new("Database directory does not exist: #{dir}")
       end
-      if File.exists?(@db_path) && !File.writable?(@db_path)
-        raise ArgumentError.new("Database file is not writable: #{@db_path}")
+      if File.exists?(@config.db_path) && !File.writable?(@config.db_path)
+        raise ArgumentError.new("Database file is not writable: #{@config.db_path}")
       end
     end
 
@@ -131,10 +118,9 @@ module Azurite
     def get_article(item_link : String) : ArticleContent?
       synchronized do
         @db.query_one?(
-          "SELECT #{ARTICLE_CONTENT_COLUMNS} FROM article_content WHERE item_link = ? LIMIT 1",
-          item_link
-        ) do |row|
-          ArticleContent.from_row(row)
+          "SELECT #{ARTICLE_CONTENT_COLUMNS} FROM article_content WHERE item_link = ? LIMIT 1"
+        ) do |rs|
+          ArticleContent.from_row(rs)
         end
       end
     end
@@ -145,9 +131,9 @@ module Azurite
         @db.query(
           "SELECT #{ARTICLE_CONTENT_COLUMNS} FROM article_content WHERE feed_url = ? ORDER BY created_at DESC",
           feed_url
-        ) do |row|
-          row.each do
-            articles << ArticleContent.from_row(row)
+        ) do |rs|
+          while rs.move_next
+            articles << ArticleContent.from_row(rs)
           end
         end
         articles
@@ -155,38 +141,39 @@ module Azurite
     end
 
     def cleanup_old_entries(retention_days : Int32? = nil) : Int32
-      days = retention_days || @retention_days
+      days = retention_days || @config.retention_days
       result = synchronized do
         cutoff = (Time.utc - days.days).to_s(TIME_FORMAT)
         exec_result = @db.exec("DELETE FROM article_content WHERE created_at < ?", cutoff)
-        deleted = exec_result.rows_affected.to_i32
-        {deleted, "Cleaned up #{deleted} old articles (older than #{days} days)"}
+        exec_result.rows_affected.to_i32
       end
-      result.try { |r| AZURITE_LOG.info { r[1] } if r[0] > 0 }
-      result.try(&.[0]) || 0
+      if result && result > 0
+        AZURITE_LOG.info { "Cleaned up #{result} old articles (older than #{days} days)" }
+      end
+      result || 0
     end
 
     def db_size_mb : Float64
-      return 0.0 unless File.exists?(@db_path)
-      File.size(@db_path).to_f64 / BYTES_PER_MB
+      return 0.0 unless File.exists?(@config.db_path)
+      File.size(@config.db_path).to_f64 / BYTES_PER_MB
     end
 
     def enforce_size_limits : Nil
       current_size_mb = db_size_mb
 
-      if current_size_mb > @hard_limit_mb
-        AZURITE_LOG.warn { "Content DB size (#{current_size_mb.round(2)}MB) exceeds hard limit (#{@hard_limit_mb}MB), running aggressive cleanup..." }
+      if current_size_mb > @config.hard_limit_mb
+        AZURITE_LOG.warn { "Content DB size (#{current_size_mb.round(2)}MB) exceeds hard limit (#{@config.hard_limit_mb}MB), running aggressive cleanup..." }
         aggressive_cleanup
-      elsif current_size_mb > @max_size_mb
-        AZURITE_LOG.warn { "Content DB size (#{current_size_mb.round(2)}MB) exceeds soft limit (#{@max_size_mb}MB)" }
-        cleanup_old_entries({(@retention_days / SOFT_CLEANUP_DAYS_FRACTION).to_i32, 1}.max)
-      elsif current_size_mb > @warning_size_mb
-        AZURITE_LOG.info { "Content DB size: #{current_size_mb.round(2)}MB (warning threshold: #{@warning_size_mb}MB)" }
+      elsif current_size_mb > @config.max_size_mb
+        AZURITE_LOG.warn { "Content DB size (#{current_size_mb.round(2)}MB) exceeds soft limit (#{@config.max_size_mb}MB)" }
+        cleanup_old_entries({@config.retention_days / SOFT_CLEANUP_DAYS_FRACTION, 1}.max)
+      elsif current_size_mb > @config.warning_size_mb
+        AZURITE_LOG.info { "Content DB size: #{current_size_mb.round(2)}MB (warning threshold: #{@config.warning_size_mb}MB)" }
       end
     end
 
     private def aggressive_cleanup
-      cleanup_old_entries({(@retention_days / AGGRESSIVE_CLEANUP_DAYS_FRACTION).to_i32, 1}.max)
+      cleanup_old_entries({@config.retention_days / AGGRESSIVE_CLEANUP_DAYS_FRACTION, 1}.max)
       vacuum
     end
 
@@ -196,10 +183,10 @@ module Azurite
     end
 
     private def truncate_content(content : String) : String
-      return content if content.bytesize <= @max_content_bytes
-      sliced = content.byte_slice(0, @max_content_bytes)
+      return content if content.bytesize <= @config.max_content_bytes
+      sliced = content.byte_slice(0, @config.max_content_bytes)
       return sliced if sliced.valid_encoding?
-      i = @max_content_bytes
+      i = @config.max_content_bytes
       while !content.byte_slice(0, i).valid_encoding? && i > 0
         i -= 1
       end
