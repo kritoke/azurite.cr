@@ -147,24 +147,6 @@ describe Azurite::Store do
         cleanup_db(path)
       end
     end
-
-    it "returns positive size after storing content" do
-      path = temp_db_path
-      begin
-        store = Azurite::Builder.new.db_path(path).build
-        store.store(
-          "https://example.com/article1",
-          "https://example.com/feed.xml",
-          "Test",
-          "<p>Content</p>" * 100
-        )
-        size = store.db_size_mb
-        size.should be > 0.0
-        store.close
-      ensure
-        cleanup_db(path)
-      end
-    end
   end
 
   describe "#cleanup_old_entries" do

@@ -7,6 +7,7 @@ module Azurite
     include JSON::Serializable
 
     getter id : Int64?
+    setter id : Int64?
     property item_link : String
     property feed_url : String
     property title : String
@@ -29,11 +30,11 @@ module Azurite
     # Map from database result set - column order must match ARTICLE_CONTENT_COLUMNS
     def self.new(rs : DB::ResultSet)
       new(
-        rs.read(String),    # item_link
-        rs.read(String),    # feed_url
-        rs.read(String),    # title
-        rs.read(String),    # content
-        rs.read(String),    # content_type
+        rs.read(String), # item_link
+        rs.read(String), # feed_url
+        rs.read(String), # title
+        rs.read(String), # content
+        rs.read(String), # content_type
       ).tap do |a|
         a.id = rs.read(Int64)
         a.fetched_at = Time.parse(rs.read(String), TIME_FORMAT, Time::Location::UTC)

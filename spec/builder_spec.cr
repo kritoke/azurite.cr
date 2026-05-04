@@ -33,7 +33,7 @@ describe Azurite::Builder do
 
   describe "#max_size_mb" do
     it "raises for invalid max_size_mb" do
-      expect_raises(ArgumentError, "max_size_mb must be positive") do
+      expect_raises(ArgumentError, "max_size_mb must be at least 1") do
         Azurite::Builder.new.max_size_mb(0)
       end
     end

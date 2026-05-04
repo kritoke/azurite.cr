@@ -56,7 +56,7 @@ crystal_1_18 = if builtins.hasAttr "crystal_1_18" pkgs then pkgs.crystal_1_18 el
       # Get shellHook from privateConfig if provided
       privateShellHook = if privateConfig ? shellHook then privateConfig.shellHook else "";
 
-pwLibs = [];
+pwLibs = with pkgs; [ sqlite ];
 
     in {
       devShells.${system}.default = pkgs.mkShell {

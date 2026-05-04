@@ -1,14 +1,14 @@
 module Azurite
-  RETENTION_DAYS_DEFAULT    =        45
-  MAX_SIZE_MB_DEFAULT       =        50
-  WARNING_SIZE_MB_DEFAULT   =        30
-  HARD_LIMIT_MB_DEFAULT     =       100
-  MAX_CONTENT_BYTES_DEFAULT = 1_048_576
-  DB_PATH_DEFAULT           = "./content.db"
-  CONTENT_TYPE_DEFAULT      = "html"
-  TIME_FORMAT               = "%Y-%m-%dT%H:%M:%SZ"
-  TABLE_NAME                = "article_content"
-  ARTICLE_CONTENT_COLUMNS = "item_link, feed_url, title, content, content_type, id, fetched_at, created_at"
+  RETENTION_DAYS_DEFAULT        =        45
+  MAX_SIZE_MB_DEFAULT           =        50
+  WARNING_SIZE_MB_DEFAULT       =        30
+  HARD_LIMIT_MB_DEFAULT         =       100
+  MAX_CONTENT_BYTES_DEFAULT     = 1_048_576
+  DB_PATH_DEFAULT               = "./content.db"
+  CONTENT_TYPE_DEFAULT          = "html"
+  TIME_FORMAT                   = "%Y-%m-%dT%H:%M:%SZ"
+  TABLE_NAME                    = "article_content"
+  ARTICLE_CONTENT_COLUMNS       = "item_link, feed_url, title, content, content_type, id, fetched_at, created_at"
   AUTO_CLEANUP_INTERVAL_DEFAULT = 1.hour
 
   # Validation
@@ -18,7 +18,7 @@ module Azurite
   BYTES_PER_MB = 1_048_576
 
   # For retention cleanup fractions
-  SOFT_CLEANUP_DAYS_FRACTION = 2
+  SOFT_CLEANUP_DAYS_FRACTION       = 2
   AGGRESSIVE_CLEANUP_DAYS_FRACTION = 3
 
   # Logging
@@ -39,21 +39,12 @@ module Azurite
       @max_size_mb = MAX_SIZE_MB_DEFAULT,
       @warning_size_mb = WARNING_SIZE_MB_DEFAULT,
       @hard_limit_mb = HARD_LIMIT_MB_DEFAULT,
-      @max_content_bytes = MAX_CONTENT_BYTES_DEFAULT
+      @max_content_bytes = MAX_CONTENT_BYTES_DEFAULT,
     )
-      validate!
-    end
-
-    private def validate!
-      raise ArgumentError.new("retention_days must be at least #{MIN_VALID_VALUE}") if @retention_days < MIN_VALID_VALUE
-      raise ArgumentError.new("max_size_mb must be at least #{MIN_VALID_VALUE}") if @max_size_mb < MIN_VALID_VALUE
-      raise ArgumentError.new("warning_size_mb must be at least #{MIN_VALID_VALUE}") if @warning_size_mb < MIN_VALID_VALUE
-      raise ArgumentError.new("hard_limit_mb must be at least #{MIN_VALID_VALUE}") if @hard_limit_mb < MIN_VALID_VALUE
-      raise ArgumentError.new("max_content_bytes must be at least #{MIN_VALID_VALUE}") if @max_content_bytes < MIN_VALID_VALUE
     end
 
     def retention_days_fraction(factor : Int32) : Int32
-      {@retention_days / factor, 1}.max
+      ({@retention_days // factor, 1}).max
     end
   end
 end

@@ -35,10 +35,11 @@ module Azurite
     rescue ex
       msg = context ? "Failed to #{context}" : "Database operation failed"
       AZURITE_LOG.error(exception: ex) { msg }
-      nil
+      raise ex
     end
 
     def start_auto_cleanup(interval : Time::Span = AUTO_CLEANUP_INTERVAL_DEFAULT) : Nil
+      return if @auto_cleanup_enabled
       @auto_cleanup_enabled = true
       @auto_cleanup_interval = interval
       spawn_auto_cleanup
@@ -46,6 +47,7 @@ module Azurite
     end
 
     def stop_auto_cleanup : Nil
+      return unless @auto_cleanup_enabled
       @auto_cleanup_enabled = false
       @cleanup_channel.send(nil)
       AZURITE_LOG.info { "Auto cleanup stopped" }
@@ -58,7 +60,11 @@ module Azurite
           when @cleanup_channel.receive
             break
           when timeout @auto_cleanup_interval
-            enforce_size_limits if @auto_cleanup_enabled
+            if @auto_cleanup_enabled
+              enforce_size_limits
+            else
+              break
+            end
           end
         end
       end
@@ -69,8 +75,11 @@ module Azurite
       if dir != "." && !Dir.exists?(dir)
         raise ArgumentError.new("Database directory does not exist: #{dir}")
       end
-      if File.exists?(@config.db_path) && !File.writable?(@config.db_path)
-        raise ArgumentError.new("Database file is not writable: #{@config.db_path}")
+      if File.exists?(@config.db_path)
+        info = File.info(@config.db_path)
+        unless info.permissions.includes?(File::Permissions::OwnerWrite)
+          raise ArgumentError.new("Database file is not writable: #{@config.db_path}")
+        end
       end
     end
 
@@ -94,7 +103,7 @@ module Azurite
     end
 
     def store(item_link : String, feed_url : String, title : String, content : String, content_type : String = CONTENT_TYPE_DEFAULT) : Bool
-      result = synchronized("store content for #{item_link}") do
+      synchronized("store content for #{item_link}") do
         truncated_content = truncate_content(content)
         fetched_at = Time.utc.to_s(TIME_FORMAT)
         @db.exec(
@@ -103,7 +112,6 @@ module Azurite
         )
         true
       end
-      result || false
     end
 
     def get_content(item_link : String) : String?
@@ -120,8 +128,10 @@ module Azurite
       synchronized("get article for #{item_link}") do
         @db.query_one?(
           "SELECT #{ARTICLE_CONTENT_COLUMNS} FROM #{TABLE_NAME} WHERE item_link = ? LIMIT 1",
-          as: ArticleContent
-        )
+          item_link
+        ) do |result_set|
+          ArticleContent.new(result_set)
+        end
       end
     end
 
@@ -131,9 +141,9 @@ module Azurite
         @db.query(
           "SELECT #{ARTICLE_CONTENT_COLUMNS} FROM #{TABLE_NAME} WHERE feed_url = ? ORDER BY created_at DESC",
           feed_url
-        ) do |rs|
-          while rs.move_next
-            articles << ArticleContent.new(rs)
+        ) do |result_set|
+          while result_set.move_next
+            articles << ArticleContent.new(result_set)
           end
         end
         articles
@@ -184,13 +194,23 @@ module Azurite
 
     private def truncate_content(content : String) : String
       return content if content.bytesize <= @config.max_content_bytes
-      sliced = content.byte_slice(0, @config.max_content_bytes)
-      return sliced if sliced.valid_encoding?
-      i = @config.max_content_bytes
-      while !content.byte_slice(0, i).valid_encoding? && i > 0
-        i -= 1
+
+      # Content exceeds limit - truncate to max bytes, handling UTF-8 boundaries
+      return content.byte_slice(0, @config.max_content_bytes) if content.valid_encoding?
+
+      # Use binary search to find valid UTF-8 boundary
+      max_bytes = @config.max_content_bytes
+      lo = 0
+      hi = max_bytes
+      while lo < hi
+        mid = (lo + hi + 1) // 2
+        if content.byte_slice(0, mid).valid_encoding?
+          lo = mid
+        else
+          hi = mid - 1
+        end
       end
-      content.byte_slice(0, i)
+      content.byte_slice(0, lo)
     end
 
     def close : Nil
