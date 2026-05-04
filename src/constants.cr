@@ -10,7 +10,16 @@ module Azurite
   ARTICLE_CONTENT_COLUMNS   = "id, item_link, feed_url, title, content, content_type, fetched_at, created_at"
   AUTO_CLEANUP_INTERVAL_DEFAULT = 1.hour
 
+  # Validation
+  MIN_VALID_VALUE = 1
+
+  # Byte calculations
+  BYTES_PER_MB = 1_048_576
+
   # For retention cleanup fractions
   SOFT_CLEANUP_DAYS_FRACTION = 2
   AGGRESSIVE_CLEANUP_DAYS_FRACTION = 3
+
+  # Logging
+  AZURITE_LOG = Log.for("azurite")
 end

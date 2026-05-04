@@ -20,7 +20,7 @@ module Azurite
 
     private macro validate_and_set(name)
       def {{name.id}}(value : Int32) : self
-        raise ArgumentError.new(VALIDATORS[:{{name.id}}]) if value < 1
+        raise ArgumentError.new(VALIDATORS[:{{name.id}}]) if value < MIN_VALID_VALUE
         @{{name.id}} = value
         self
       end

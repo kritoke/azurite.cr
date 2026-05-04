@@ -38,13 +38,13 @@ module Azurite
       @cleanup_channel = ::Channel(Nil).new
       @db = DB.open("sqlite3:#{@db_path}")
       init_schema
-      Log.for("azurite").info { "AzuriteStore initialized: #{@db_path}" }
+      AZURITE_LOG.info { "AzuriteStore initialized: #{@db_path}" }
     end
 
     private def synchronized(&)
       @mutex.synchronize { yield }
     rescue ex
-      Log.for("azurite").error(exception: ex) { "Database operation failed" }
+      AZURITE_LOG.error(exception: ex) { "Database operation failed" }
       nil
     end
 
@@ -52,13 +52,13 @@ module Azurite
       @auto_cleanup_enabled = true
       @auto_cleanup_interval = interval
       spawn_auto_cleanup
-      Log.for("azurite").info { "Auto cleanup started with interval: #{interval}" }
+      AZURITE_LOG.info { "Auto cleanup started with interval: #{interval}" }
     end
 
     def stop_auto_cleanup : Nil
       @auto_cleanup_enabled = false
       @cleanup_channel.send(nil)
-      Log.for("azurite").info { "Auto cleanup stopped" }
+      AZURITE_LOG.info { "Auto cleanup stopped" }
     end
 
     private def spawn_auto_cleanup
@@ -119,14 +119,13 @@ module Azurite
     end
 
     def get_content(item_link : String) : String?
-      @db.query_one?(
-        "SELECT content FROM article_content WHERE item_link = ? LIMIT 1",
-        item_link,
-        as: String
-      )
-    rescue ex
-      Log.for("azurite").error(exception: ex) { "Failed to get content for #{item_link}" }
-      nil
+      synchronized do
+        @db.query_one?(
+          "SELECT content FROM article_content WHERE item_link = ? LIMIT 1",
+          item_link,
+          as: String
+        )
+      end
     end
 
     def get_article(item_link : String) : ArticleContent?
@@ -161,28 +160,28 @@ module Azurite
         cutoff = (Time.utc - days.days).to_s(TIME_FORMAT)
         exec_result = @db.exec("DELETE FROM article_content WHERE created_at < ?", cutoff)
         deleted = exec_result.rows_affected.to_i32
-        Log.for("azurite").info { "Cleaned up #{deleted} old articles (older than #{days} days)" } if deleted > 0
-        deleted
+        {deleted, "Cleaned up #{deleted} old articles (older than #{days} days)"}
       end
-      result || 0
+      result.try { |r| AZURITE_LOG.info { r[1] } if r[0] > 0 }
+      result.try(&.[0]) || 0
     end
 
     def db_size_mb : Float64
       return 0.0 unless File.exists?(@db_path)
-      File.size(@db_path).to_f64 / (1024 * 1024)
+      File.size(@db_path).to_f64 / BYTES_PER_MB
     end
 
     def enforce_size_limits : Nil
       current_size_mb = db_size_mb
 
       if current_size_mb > @hard_limit_mb
-        Log.for("azurite").warn { "Content DB size (#{current_size_mb.round(2)}MB) exceeds hard limit (#{@hard_limit_mb}MB), running aggressive cleanup..." }
+        AZURITE_LOG.warn { "Content DB size (#{current_size_mb.round(2)}MB) exceeds hard limit (#{@hard_limit_mb}MB), running aggressive cleanup..." }
         aggressive_cleanup
       elsif current_size_mb > @max_size_mb
-        Log.for("azurite").warn { "Content DB size (#{current_size_mb.round(2)}MB) exceeds soft limit (#{@max_size_mb}MB)" }
+        AZURITE_LOG.warn { "Content DB size (#{current_size_mb.round(2)}MB) exceeds soft limit (#{@max_size_mb}MB)" }
         cleanup_old_entries({(@retention_days / SOFT_CLEANUP_DAYS_FRACTION).to_i32, 1}.max)
       elsif current_size_mb > @warning_size_mb
-        Log.for("azurite").info { "Content DB size: #{current_size_mb.round(2)}MB (warning threshold: #{@warning_size_mb}MB)" }
+        AZURITE_LOG.info { "Content DB size: #{current_size_mb.round(2)}MB (warning threshold: #{@warning_size_mb}MB)" }
       end
     end
 
@@ -193,7 +192,7 @@ module Azurite
 
     private def vacuum
       @db.exec("VACUUM")
-      Log.for("azurite").info { "Vacuumed content database" }
+      AZURITE_LOG.info { "Vacuumed content database" }
     end
 
     private def truncate_content(content : String) : String
@@ -208,9 +207,7 @@ module Azurite
     end
 
     def close : Nil
-      if @auto_cleanup_enabled
-        stop_auto_cleanup
-      end
+      stop_auto_cleanup
       @db.close
     end
   end
