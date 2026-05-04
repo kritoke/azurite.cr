@@ -8,7 +8,7 @@ module Azurite
   CONTENT_TYPE_DEFAULT      = "html"
   TIME_FORMAT               = "%Y-%m-%dT%H:%M:%SZ"
   TABLE_NAME                = "article_content"
-  ARTICLE_CONTENT_COLUMNS   = "id, item_link, feed_url, title, content, content_type, fetched_at, created_at"
+  ARTICLE_CONTENT_COLUMNS = "item_link, feed_url, title, content, content_type, id, fetched_at, created_at"
   AUTO_CLEANUP_INTERVAL_DEFAULT = 1.hour
 
   # Validation

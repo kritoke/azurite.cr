@@ -6,7 +6,7 @@ module Azurite
   class ArticleContent
     include JSON::Serializable
 
-    property id : Int64?
+    getter id : Int64?
     property item_link : String
     property feed_url : String
     property title : String
@@ -26,19 +26,18 @@ module Azurite
       @created_at = Time.utc
     end
 
-    def self.from_row(rs : DB::ResultSet) : ArticleContent
-      id = rs.read(Int64)
-      item_link = rs.read(String)
-      feed_url = rs.read(String)
-      title = rs.read(String)
-      content = rs.read(String)
-      content_type = rs.read(String)
-      fetched_at = Time.parse(rs.read(String), TIME_FORMAT, Time::Location::UTC)
-      created_at = Time.parse(rs.read(String), TIME_FORMAT, Time::Location::UTC)
-      ArticleContent.new(item_link, feed_url, title, content, content_type).tap do |a|
-        a.id = id
-        a.fetched_at = fetched_at
-        a.created_at = created_at
+    # Map from database result set - column order must match ARTICLE_CONTENT_COLUMNS
+    def self.new(rs : DB::ResultSet)
+      new(
+        rs.read(String),    # item_link
+        rs.read(String),    # feed_url
+        rs.read(String),    # title
+        rs.read(String),    # content
+        rs.read(String),    # content_type
+      ).tap do |a|
+        a.id = rs.read(Int64)
+        a.fetched_at = Time.parse(rs.read(String), TIME_FORMAT, Time::Location::UTC)
+        a.created_at = Time.parse(rs.read(String), TIME_FORMAT, Time::Location::UTC)
       end
     end
   end

@@ -119,10 +119,9 @@ module Azurite
     def get_article(item_link : String) : ArticleContent?
       synchronized("get article for #{item_link}") do
         @db.query_one?(
-          "SELECT #{ARTICLE_CONTENT_COLUMNS} FROM #{TABLE_NAME} WHERE item_link = ? LIMIT 1"
-        ) do |rs|
-          ArticleContent.from_row(rs)
-        end
+          "SELECT #{ARTICLE_CONTENT_COLUMNS} FROM #{TABLE_NAME} WHERE item_link = ? LIMIT 1",
+          as: ArticleContent
+        )
       end
     end
 
@@ -134,7 +133,7 @@ module Azurite
           feed_url
         ) do |rs|
           while rs.move_next
-            articles << ArticleContent.from_row(rs)
+            articles << ArticleContent.new(rs)
           end
         end
         articles
