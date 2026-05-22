@@ -163,6 +163,18 @@ module Azurite
       result || 0
     end
 
+    def cleanup_low_quality_content(min_length : Int32) : Int32
+      result = synchronized("cleanup low quality content") do
+        exec_result = @db.exec("DELETE FROM #{TABLE_NAME} WHERE LENGTH(content) < ?", min_length)
+        exec_result.rows_affected.to_i32
+      end
+      if result && result > 0
+        AZURITE_LOG.info { "Cleaned up #{result} low-quality articles (content < #{min_length} chars)" }
+        vacuum if db_size_mb > 10
+      end
+      result || 0
+    end
+
     def db_size_mb : Float64
       return 0.0 unless File.exists?(@config.db_path)
       File.size(@config.db_path).to_f64 / BYTES_PER_MB

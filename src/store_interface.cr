@@ -8,6 +8,7 @@ module Azurite
     abstract def get_article(item_link : String) : ArticleContent?
     abstract def articles_for_feed(feed_url : String) : Array(ArticleContent)
     abstract def cleanup_old_entries(retention_days : Int32? = nil) : Int32
+    abstract def cleanup_low_quality_content(min_length : Int32) : Int32
     abstract def db_size_mb : Float64
     abstract def enforce_size_limits : Nil
     abstract def start_auto_cleanup(interval : Time::Span) : Nil
