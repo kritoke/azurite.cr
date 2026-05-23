@@ -46,3 +46,7 @@ openspec/
 
 # Roadmap planning documents (not for commit)
 /roadmap/
+
+# Planning
+planning/
+.catseye/

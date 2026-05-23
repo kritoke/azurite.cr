@@ -6,5 +6,8 @@ def temp_db_path
 end
 
 def cleanup_db(path : String)
-  File.delete(path) if File.exists?(path)
+  # Validate path is within allowed /tmp directory to prevent path traversal
+  normalized = File.expand_path(path)
+  return unless normalized.starts_with?("/tmp/")
+  File.delete(normalized) if File.exists?(normalized)
 end
