@@ -18,14 +18,15 @@ module Azurite
     @auto_cleanup_enabled : Bool
     @auto_cleanup_interval : Time::Span
     @cleanup_channel : ::Channel(Nil)
+    @cleanup_fiber : Fiber?
 
     def initialize(@config : Config)
       validate_db_path
       @mutex = Mutex.new
       @auto_cleanup_enabled = false
       @auto_cleanup_interval = AUTO_CLEANUP_INTERVAL_DEFAULT
-      @cleanup_channel = ::Channel(Nil).new
-      @db = DB.open("sqlite3:#{@config.db_path}")
+      @cleanup_channel = ::Channel(Nil).new(1)
+      @db = DB.open("sqlite3:#{@config.db_path}?busy_timeout=5000")
       init_schema
       AZURITE_LOG.info { "AzuriteStore initialized: #{@config.db_path}" }
     end
@@ -39,22 +40,26 @@ module Azurite
     end
 
     def start_auto_cleanup(interval : Time::Span = AUTO_CLEANUP_INTERVAL_DEFAULT) : Nil
-      return if @auto_cleanup_enabled
-      @auto_cleanup_enabled = true
-      @auto_cleanup_interval = interval
-      spawn_auto_cleanup
+      synchronized do
+        return if @auto_cleanup_enabled
+        @auto_cleanup_enabled = true
+        @auto_cleanup_interval = interval
+        spawn_auto_cleanup
+      end
       AZURITE_LOG.info { "Auto cleanup started with interval: #{interval}" }
     end
 
     def stop_auto_cleanup : Nil
-      return unless @auto_cleanup_enabled
-      @auto_cleanup_enabled = false
-      @cleanup_channel.send(nil)
+      synchronized do
+        return unless @auto_cleanup_enabled
+        @auto_cleanup_enabled = false
+        @cleanup_channel.send(nil)
+      end
       AZURITE_LOG.info { "Auto cleanup stopped" }
     end
 
     private def spawn_auto_cleanup
-      spawn do
+      @cleanup_fiber = spawn do
         loop do
           select
           when @cleanup_channel.receive
@@ -67,10 +72,14 @@ module Azurite
             end
           end
         end
+        @cleanup_fiber = nil
       end
     end
 
     private def validate_db_path
+      if @config.db_path.empty?
+        raise ArgumentError.new("Database path cannot be empty")
+      end
       dir = File.dirname(@config.db_path)
       if dir != "." && !Dir.exists?(dir)
         raise ArgumentError.new("Database directory does not exist: #{dir}")
@@ -84,6 +93,7 @@ module Azurite
     end
 
     private def init_schema
+      @db.exec("PRAGMA foreign_keys = ON")
       @db.exec <<-SQL # ameba:disable Style/HeredocIndent
         CREATE TABLE IF NOT EXISTS #{TABLE_NAME} (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -176,8 +186,9 @@ module Azurite
     end
 
     def db_size_mb : Float64
-      return 0.0 unless File.exists?(@config.db_path)
-      File.size(@config.db_path).to_f64 / BYTES_PER_MB
+      info = File.info?(@config.db_path)
+      return 0.0 unless info
+      info.size.to_f64 / BYTES_PER_MB
     end
 
     def enforce_size_limits : Nil
@@ -200,8 +211,12 @@ module Azurite
     end
 
     private def vacuum
-      @db.exec("VACUUM")
-      AZURITE_LOG.info { "Vacuumed content database" }
+      begin
+        @db.exec("VACUUM")
+        AZURITE_LOG.info { "Vacuumed content database" }
+      rescue ex
+        AZURITE_LOG.error(exception: ex) { "Failed to vacuum content database" }
+      end
     end
 
     private def truncate_content(content : String) : String

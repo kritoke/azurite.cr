@@ -16,6 +16,10 @@ module Azurite
     property fetched_at : Time
     property created_at : Time
 
+    def self.from_json_any(json : JSON::Any) : self
+      from_json(json.to_json)
+    end
+
     def initialize(
       @item_link : String,
       @feed_url : String,
