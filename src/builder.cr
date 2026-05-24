@@ -3,7 +3,6 @@ require "./constants"
 module Azurite
   class Builder
     @config = Config.new
-    @auto_cleanup_interval : Time::Span? = nil
 
     private def validate_positive(name : String, value : Int32)
       raise ArgumentError.new("#{name} must be at least #{MIN_VALID_VALUE}") if value < MIN_VALID_VALUE
@@ -45,16 +44,12 @@ module Azurite
     end
 
     def auto_cleanup_interval(interval : Time::Span) : self
-      @auto_cleanup_interval = interval
+      @config.auto_cleanup_interval = interval
       self
     end
 
     def build : Store
-      store = Store.new(@config)
-      if interval = @auto_cleanup_interval
-        store.start_auto_cleanup(interval)
-      end
-      store
+      Store.new(@config)
     end
   end
 end

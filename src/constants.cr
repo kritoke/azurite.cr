@@ -32,6 +32,7 @@ module Azurite
     property warning_size_mb : Int32
     property hard_limit_mb : Int32
     property max_content_bytes : Int32
+    property auto_cleanup_interval : Time::Span
 
     def initialize(
       @db_path = DB_PATH_DEFAULT,
@@ -40,6 +41,7 @@ module Azurite
       @warning_size_mb = WARNING_SIZE_MB_DEFAULT,
       @hard_limit_mb = HARD_LIMIT_MB_DEFAULT,
       @max_content_bytes = MAX_CONTENT_BYTES_DEFAULT,
+      @auto_cleanup_interval = AUTO_CLEANUP_INTERVAL_DEFAULT,
     )
     end
 

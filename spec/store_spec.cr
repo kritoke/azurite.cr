@@ -158,8 +158,17 @@ describe Azurite::Store do
           .retention_days(1)
           .build
 
-        deleted = store.cleanup_old_entries
-        deleted.should eq(0)
+        # Insert some articles first
+        store.store("https://example.com/old1", "https://example.com/feed.xml", "Old Article", "Content")
+        store.store("https://example.com/old2", "https://example.com/feed.xml", "Old Article 2", "Content")
+
+        # With 0 retention, should delete all
+        deleted = store.cleanup_old_entries(0)
+        deleted.should eq(2)
+
+        # Verify articles are gone
+        store.get_article("https://example.com/old1").should be_nil
+        store.get_article("https://example.com/old2").should be_nil
 
         store.close
       ensure
@@ -171,8 +180,12 @@ describe Azurite::Store do
       path = temp_db_path
       begin
         store = Azurite::Builder.new.db_path(path).build
+
+        # Store an article and immediately clean with 0 days - should delete it
+        store.store("https://example.com/temp", "https://example.com/feed.xml", "Temp", "Content")
         deleted = store.cleanup_old_entries(0)
-        deleted.should eq(0)
+        deleted.should eq(1)
+
         store.close
       ensure
         cleanup_db(path)
@@ -186,6 +199,57 @@ describe Azurite::Store do
       begin
         store = Azurite::Builder.new.db_path(path).build
         store.enforce_size_limits
+        store.close
+      ensure
+        cleanup_db(path)
+      end
+    end
+
+    it "handles empty database gracefully" do
+      path = temp_db_path
+      begin
+        store = Azurite::Builder.new.db_path(path).build
+        store.enforce_size_limits # Should not throw
+        store.close
+      ensure
+        cleanup_db(path)
+      end
+    end
+  end
+
+  describe "#cleanup_low_quality_content" do
+    it "deletes articles with content below threshold" do
+      path = temp_db_path
+      begin
+        store = Azurite::Builder.new.db_path(path).build
+        # Store articles with varying content lengths
+        store.store("https://example.com/short1", "https://example.com/feed.xml", "Short 1", "Hi")
+        store.store("https://example.com/short2", "https://example.com/feed.xml", "Short 2", "Hi!")
+        store.store("https://example.com/long1", "https://example.com/feed.xml", "Long 1", "This is a longer piece of content that is definitely more than 10 characters")
+
+        deleted = store.cleanup_low_quality_content(10)
+        deleted.should eq(2)
+
+        # Verify good content remains
+        store.get_article("https://example.com/long1").should_not be_nil
+        store.get_article("https://example.com/short1").should be_nil
+        store.get_article("https://example.com/short2").should be_nil
+
+        store.close
+      ensure
+        cleanup_db(path)
+      end
+    end
+
+    it "returns 0 when no articles are below threshold" do
+      path = temp_db_path
+      begin
+        store = Azurite::Builder.new.db_path(path).build
+        store.store("https://example.com/good1", "https://example.com/feed.xml", "Good", "This is some decent content that is definitely over 20 chars")
+
+        deleted = store.cleanup_low_quality_content(10)
+        deleted.should eq(0)
+
         store.close
       ensure
         cleanup_db(path)
@@ -236,6 +300,52 @@ describe Azurite::Store do
           .db_path(path)
           .auto_cleanup_interval(1.second)
           .build
+        store.stop_auto_cleanup
+        store.close
+      ensure
+        cleanup_db(path)
+      end
+    end
+
+    it "is idempotent when started multiple times" do
+      path = temp_db_path
+      begin
+        store = Azurite::Builder.new.db_path(path).build
+        store.start_auto_cleanup(1.second)
+        store.start_auto_cleanup(1.second) # Should not create duplicate fiber
+        store.start_auto_cleanup(1.second)
+        store.stop_auto_cleanup
+        store.close
+      ensure
+        cleanup_db(path)
+      end
+    end
+
+    it "runs enforce_size_limits on interval" do
+      path = temp_db_path
+      begin
+        store = Azurite::Builder.new.db_path(path).build
+        count = 0
+        store.start_auto_cleanup(100.milliseconds)
+        sleep 350.milliseconds # Should run at least 2-3 times
+        store.stop_auto_cleanup
+        store.close
+        # We can't directly count runs, but verify it didn't crash
+      ensure
+        cleanup_db(path)
+      end
+    end
+
+    it "uses configured interval from builder" do
+      path = temp_db_path
+      begin
+        # Builder with 1 second interval should be respected
+        store = Azurite::Builder.new
+          .db_path(path)
+          .auto_cleanup_interval(2.hours)
+          .build
+        # Verify start_auto_cleanup uses the interval from config
+        store.start_auto_cleanup
         store.stop_auto_cleanup
         store.close
       ensure

@@ -77,6 +77,11 @@ describe Azurite::Builder do
         cleanup_db(path)
       end
     end
+
+    it "sets the interval in the Config" do
+      builder = Azurite::Builder.new.auto_cleanup_interval(3.hours)
+      builder.@config.auto_cleanup_interval.should eq(3.hours)
+    end
   end
 
   describe "#build" do

@@ -16,7 +16,6 @@ module Azurite
     @config : Config
     @mutex : Mutex
     @auto_cleanup_enabled : Bool
-    @auto_cleanup_interval : Time::Span
     @cleanup_channel : ::Channel(Nil)
     @cleanup_fiber : Fiber?
 
@@ -24,7 +23,6 @@ module Azurite
       validate_db_path
       @mutex = Mutex.new
       @auto_cleanup_enabled = false
-      @auto_cleanup_interval = AUTO_CLEANUP_INTERVAL_DEFAULT
       @cleanup_channel = ::Channel(Nil).new(1)
       @db = DB.open("sqlite3:#{@config.db_path}?busy_timeout=5000")
       init_schema
@@ -39,12 +37,11 @@ module Azurite
       raise ex
     end
 
-    def start_auto_cleanup(interval : Time::Span = AUTO_CLEANUP_INTERVAL_DEFAULT) : Nil
+    def start_auto_cleanup(interval : Time::Span = @config.auto_cleanup_interval) : Nil
       synchronized do
         return if @auto_cleanup_enabled
         @auto_cleanup_enabled = true
-        @auto_cleanup_interval = interval
-        spawn_auto_cleanup
+        spawn_auto_cleanup(interval)
       end
       AZURITE_LOG.info { "Auto cleanup started with interval: #{interval}" }
     end
@@ -58,15 +55,20 @@ module Azurite
       AZURITE_LOG.info { "Auto cleanup stopped" }
     end
 
-    private def spawn_auto_cleanup
+    private def spawn_auto_cleanup(interval : Time::Span)
       @cleanup_fiber = spawn do
         loop do
           select
           when @cleanup_channel.receive
             break
-          when timeout @auto_cleanup_interval
+          when timeout interval
+            # Re-check enabled flag inside loop, not at spawn time
             if @auto_cleanup_enabled
-              enforce_size_limits
+              begin
+                enforce_size_limits
+              rescue ex
+                AZURITE_LOG.error(exception: ex) { "Auto cleanup failed" }
+              end
             else
               break
             end
@@ -94,6 +96,10 @@ module Azurite
 
     private def init_schema
       @db.exec("PRAGMA foreign_keys = ON")
+      @db.exec("PRAGMA journal_mode = WAL")
+      @db.exec("PRAGMA synchronous = NORMAL")
+      @db.exec("PRAGMA cache_size = -64000")
+      @db.exec("PRAGMA busy_timeout = 5000")
       @db.exec <<-SQL # ameba:disable Style/HeredocIndent
         CREATE TABLE IF NOT EXISTS #{TABLE_NAME} (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -180,7 +186,8 @@ module Azurite
       end
       if result && result > 0
         AZURITE_LOG.info { "Cleaned up #{result} low-quality articles (content < #{min_length} chars)" }
-        vacuum if db_size_mb > 10
+        # Only vacuum if DB is large enough to benefit
+        spawn_vacuum if db_size_mb > 10
       end
       result || 0
     end
@@ -207,10 +214,22 @@ module Azurite
 
     private def aggressive_cleanup
       cleanup_old_entries(@config.retention_days_fraction(AGGRESSIVE_CLEANUP_DAYS_FRACTION))
-      vacuum
+      spawn_vacuum
+    end
+
+    private def spawn_vacuum
+      spawn do
+        begin
+          @db.exec("VACUUM")
+          AZURITE_LOG.info { "Vacuumed content database" }
+        rescue ex
+          AZURITE_LOG.error(exception: ex) { "Failed to vacuum content database" }
+        end
+      end
     end
 
     private def vacuum
+      # Legacy sync vacuum - prefer spawn_vacuum for non-blocking operation
       begin
         @db.exec("VACUUM")
         AZURITE_LOG.info { "Vacuumed content database" }
