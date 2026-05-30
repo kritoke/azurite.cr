@@ -51,3 +51,6 @@ openspec/
 planning/
 .catseye/
 .claude/
+# Local Pi runtime state
+.atl/
+.pi/
