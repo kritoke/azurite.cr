@@ -8,7 +8,7 @@ authors:
 dependencies:
   sqlite3:
     github: crystal-lang/crystal-sqlite3
-    version: "~> 0.22.0"
+    version: "~> 0.23.0"
 
 development_dependencies:
   ameba:

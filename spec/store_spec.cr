@@ -158,17 +158,27 @@ describe Azurite::Store do
           .retention_days(1)
           .build
 
-        # Insert some articles first
+        # Insert articles with an explicitly old created_at (3 days ago)
+        old_cutoff = (Time.utc - 3.days).to_s("%Y-%m-%dT%H:%M:%SZ")
         store.store("https://example.com/old1", "https://example.com/feed.xml", "Old Article", "Content")
         store.store("https://example.com/old2", "https://example.com/feed.xml", "Old Article 2", "Content")
+        # Override created_at to simulate aged articles
+        store.@db.exec("UPDATE article_content SET created_at = ? WHERE item_link IN (?, ?)",
+          old_cutoff, "https://example.com/old1", "https://example.com/old2")
 
-        # With 0 retention, should delete all
-        deleted = store.cleanup_old_entries(0)
+        # Also store a recent article that should survive
+        store.store("https://example.com/recent1", "https://example.com/feed.xml", "Recent Article", "Content")
+
+        # With 2-day retention, the 3-day-old articles should be deleted
+        deleted = store.cleanup_old_entries(2)
         deleted.should eq(2)
 
-        # Verify articles are gone
+        # Verify old articles are gone
         store.get_article("https://example.com/old1").should be_nil
         store.get_article("https://example.com/old2").should be_nil
+
+        # Verify recent article survives
+        store.get_article("https://example.com/recent1").should_not be_nil
 
         store.close
       ensure
@@ -181,9 +191,14 @@ describe Azurite::Store do
       begin
         store = Azurite::Builder.new.db_path(path).build
 
-        # Store an article and immediately clean with 0 days - should delete it
+        # Store an article and backdate it to 5 days ago
+        old_cutoff = (Time.utc - 5.days).to_s("%Y-%m-%dT%H:%M:%SZ")
         store.store("https://example.com/temp", "https://example.com/feed.xml", "Temp", "Content")
-        deleted = store.cleanup_old_entries(0)
+        store.@db.exec("UPDATE article_content SET created_at = ? WHERE item_link = ?",
+          old_cutoff, "https://example.com/temp")
+
+        # 3-day retention should catch the 5-day-old article
+        deleted = store.cleanup_old_entries(3)
         deleted.should eq(1)
 
         store.close
