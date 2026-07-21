@@ -93,6 +93,18 @@ articles.each do |article|
 end
 ```
 
+#### `cleanup_low_quality_content(min_length) : Int32`
+
+Delete articles with content shorter than the specified minimum length. Returns count of deleted articles.
+
+```crystal
+deleted = store.cleanup_low_quality_content(100)
+# => 5
+```
+
+- Only vacuums the database if it's larger than 10MB
+- Useful for filtering out stub articles, tracking pixels, or minimal content
+
 #### `cleanup_old_entries(retention_days = 45) : Int32`
 
 Delete articles older than retention period. Returns count of deleted articles.
@@ -105,6 +117,7 @@ deleted = store.cleanup_old_entries
 #### `enforce_size_limits`
 
 Automatically manage database size:
+
 - **Above hard limit (100MB)**: Aggressive cleanup + VACUUM
 - **Above soft limit (50MB)**: Cleanup with half retention period
 - **Above warning (30MB)**: Log size only
@@ -209,7 +222,12 @@ crystal tool format --check src/
 
 ## Dependencies
 
-- [crystal-sqlite3](https://github.com/crystal-lang/crystal-sqlite3) ~> 0.22.0
+- [crystal-sqlite3](https://github.com/crystal-lang/crystal-sqlite3) ~> 0.23.0
+- Crystal >= 1.19.0
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a detailed list of changes.
 
 ## License
 

@@ -5,5 +5,5 @@ require "./constants"
 require "./models/article_content"
 
 module Azurite
-  VERSION = "0.1.0"
+  VERSION = "0.1.1"
 end
